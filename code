@@ -1,0 +1,137 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import (accuracy_score, confusion_matrix,
+                             classification_report, roc_curve,
+                             roc_auc_score, ConfusionMatrixDisplay)
+import matplotlib.pyplot as plt
+
+# Load data
+df = pd.read_csv('bank_with_missing.csv')
+
+print("Initial shape:", df.shape)
+print("\nMissing values:\n", df.isna().sum())
+
+# Task 1: Handle missing values
+# Age: Fill with mean
+mean_age = df['age'].mean()
+df['age'] = df['age'].fillna(mean_age)
+
+# Job: Fill with mode
+mode_job = df['job'].mode()[0]
+df['job'] = df['job'].fillna(mode_job)
+
+# Balance: Drop rows with missing values
+df = df.dropna(subset=["balance"])
+
+print("\nAfter cleaning:", df.shape)
+print("Missing values:\n", df.isna().sum())
+
+# Visualize target distribution
+plt.figure()
+df['y'].value_counts().plot(kind='bar')
+plt.title("Target Distribution (y) after cleaning")
+plt.xlabel("y")
+plt.ylabel("count")
+plt.show()
+
+# Task 2: Encode target and features
+# Encode target 'y' (no -> 0, yes -> 1)
+label_encoder = LabelEncoder()
+df['y'] = label_encoder.fit_transform(df['y'])
+
+# One-hot encode categorical features (excluding target)
+X_raw = df.drop(columns=['y'])
+y = df['y']
+X = pd.get_dummies(X_raw, drop_first=True).astype(int)
+
+print("\nFeature shape after encoding:", X.shape)
+print("Target distribution:\n", y.value_counts(normalize=True))
+
+# Task 3: Stratified train/test split (80/20)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print("\nTrain set shape:", X_train.shape)
+print("Test set shape:", X_test.shape)
+
+# Task 4: Scale features
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Task 5: Train and evaluate models
+
+# ============ Logistic Regression ============
+print("\n" + "="*50)
+print("LOGISTIC REGRESSION")
+print("="*50)
+
+log_reg = LogisticRegression(max_iter=1000)
+log_reg.fit(X_train_scaled, y_train)
+y_pred_lr = log_reg.predict(X_test_scaled)
+y_proba_lr = log_reg.predict_proba(X_test_scaled)[:, 1]
+
+print(f"\nAccuracy: {accuracy_score(y_test, y_pred_lr):.4f}")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred_lr))
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred_lr, digits=3))
+
+auc_lr = roc_auc_score(y_test, y_proba_lr)
+print(f"\nAUC Score: {auc_lr:.3f}")
+
+# ============ Decision Tree ============
+print("\n" + "="*50)
+print("DECISION TREE (max_depth=5)")
+print("="*50)
+
+dt = DecisionTreeClassifier(criterion='gini', max_depth=5, random_state=0)
+dt.fit(X_train_scaled, y_train)
+y_pred_dt = dt.predict(X_test_scaled)
+y_proba_dt = dt.predict_proba(X_test_scaled)[:, 1]
+
+print(f"\nAccuracy: {accuracy_score(y_test, y_pred_dt):.4f}")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred_dt))
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred_dt, digits=3))
+
+auc_dt = roc_auc_score(y_test, y_proba_dt)
+print(f"\nAUC Score: {auc_dt:.3f}")
+
+# ============ Visualizations ============
+
+# Confusion Matrices
+fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+ConfusionMatrixDisplay.from_predictions(y_test, y_pred_lr, ax=axs[0])
+axs[0].set_title("Confusion Matrix - Logistic Regression")
+ConfusionMatrixDisplay.from_predictions(y_test, y_pred_dt, ax=axs[1])
+axs[1].set_title("Confusion Matrix - Decision Tree")
+plt.tight_layout()
+plt.show()
+
+# ROC Curves
+fpr_lr, tpr_lr, _ = roc_curve(y_test, y_proba_lr)
+fpr_dt, tpr_dt, _ = roc_curve(y_test, y_proba_dt)
+
+plt.figure(figsize=(8, 6))
+plt.plot(fpr_lr, tpr_lr, label=f'Logistic Regression (AUC={auc_lr:.3f})', linewidth=2)
+plt.plot(fpr_dt, tpr_dt, label=f'Decision Tree (AUC={auc_dt:.3f})', linewidth=2)
+plt.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Chance')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curves Comparison')
+plt.legend(loc='lower right')
+plt.grid(True, alpha=0.3)
+plt.show()
+
+print("\n" + "="*50)
+print("SUMMARY")
+print("="*50)
+print(f"Logistic Regression - Accuracy: {accuracy_score(y_test, y_pred_lr):.4f}, AUC: {auc_lr:.3f}")
+print(f"Decision Tree       - Accuracy: {accuracy_score(y_test, y_pred_dt):.4f}, AUC: {auc_dt:.3f}")
